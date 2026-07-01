@@ -70,6 +70,7 @@ packages/
       session.dart         # высокоуровневый E2E-сеанс (+ сериализация)
       secret_vault.dart    # шифрованное хранилище ключей (AEAD + PBKDF2)
       safety_number.dart   # сверка личности (anti-MITM)
+      app_lock.dart        # код-пароль + паник-вайп данных
       codec.dart           # бинарная сериализация
   relay/              # транспорт store-and-forward
     lib/src/
@@ -137,8 +138,9 @@ final RelayTransport net = TorRelayClient(onionHost: '<адрес>.onion');
 - [x] Tor-клиент: SOCKS5 + HTTP-туннель к релею (10/10 тестов через мок-прокси)
 - [x] Сериализация Identity/PreKeys/Session + шифрованное хранилище (`SecretVault`)
 - [x] Сверка safety-number (защита от MITM)
+- [x] Код-пароль с паник-вайпом данных (`AppLock`, 8/8 тестов)
 - [ ] Развернуть релей как onion-сервис + прогнать `tor_smoke` против живого Tor
-- [ ] Flutter-клиент: экраны создания/ввода ключа, чат (+ интеграция keystore/keychain)
+- [ ] Flutter-клиент: список чатов, создать/ввести ключ, чат, настройки, экран код-пароля
 - [ ] Независимый аудит крипто
 
 ## Лицензия

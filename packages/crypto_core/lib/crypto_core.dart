@@ -10,6 +10,8 @@
 /// exported for tests and advanced use.
 library crypto_core;
 
+export 'src/app_lock.dart'
+    show AppLock, LockStorage, WrongPasswordException, DataWipedException;
 export 'src/double_ratchet.dart' show DoubleRatchet, RatchetHeader;
 export 'src/identity.dart' show Identity, PreKeys;
 export 'src/invite.dart' show InviteKey;
