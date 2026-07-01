@@ -1,0 +1,20 @@
+name: relay
+description: >-
+  Minimal store-and-forward relay for the anonymous messenger. It moves opaque
+  encrypted envelopes between one-time mailboxes and deliberately knows nothing
+  else: no accounts, no identities, no plaintext, no on-disk logs.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  crypto_core:
+    path: ../crypto_core
+  shelf: ^1.4.0
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^4.0.0

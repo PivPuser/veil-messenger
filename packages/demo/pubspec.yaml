@@ -1,0 +1,19 @@
+name: chat_demo
+description: >-
+  Command-line demonstration of the full flow: Чел1 creates a key, Чел2 pastes
+  it, and they exchange messages through the store-and-forward relay — proving
+  end-to-end encryption + transport before any Flutter/Tor work.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  crypto_core:
+    path: ../crypto_core
+  relay:
+    path: ../relay
+
+dev_dependencies:
+  lints: ^4.0.0
