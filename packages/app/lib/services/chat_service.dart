@@ -119,4 +119,52 @@ class ChatController extends ChangeNotifier {
     }
     if (changed) notifyListeners();
   }
+
+  /// Serializes the whole conversation (session ratchet state, mailbox
+  /// counters, and message history). Contains secrets — persist only sealed
+  /// (see [ChatStore]). The transport is NOT serialized; supply it on restore.
+  Future<Map<String, dynamic>> toJson() async {
+    return <String, dynamic>{
+      'session': base64.encode(await _session.serialize()),
+      'sendDir': _sendDir,
+      'recvDir': _recvDir,
+      'sendIndex': _sendIndex,
+      'recvIndex': _recvIndex,
+      'rendezvousId': _rendezvousId,
+      'messages': <Map<String, dynamic>>[
+        for (final ChatMessage m in messages)
+          <String, dynamic>{
+            't': m.text,
+            'o': m.outgoing,
+            'ms': m.time.millisecondsSinceEpoch,
+          },
+      ],
+    };
+  }
+
+  static Future<ChatController> fromJson(
+    Map<String, dynamic> json, {
+    RelayTransport? transport,
+  }) async {
+    final Session session =
+        await Session.deserialize(base64.decode(json['session'] as String));
+    final ChatController controller = ChatController(
+      session: session,
+      transport: transport,
+      sendDir: json['sendDir'] as String,
+      recvDir: json['recvDir'] as String,
+      rendezvousId: json['rendezvousId'] as String?,
+      initialMessages: <ChatMessage>[
+        for (final dynamic m in json['messages'] as List<dynamic>)
+          ChatMessage(
+            text: m['t'] as String,
+            outgoing: m['o'] as bool,
+            time: DateTime.fromMillisecondsSinceEpoch(m['ms'] as int),
+          ),
+      ],
+    );
+    controller._sendIndex = json['sendIndex'] as int;
+    controller._recvIndex = json['recvIndex'] as int;
+    return controller;
+  }
 }
