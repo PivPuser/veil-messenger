@@ -105,12 +105,17 @@ class ChatController extends ChangeNotifier {
     final envelopes = await transport.fetch(mailbox);
     bool changed = false;
     for (final envelope in envelopes) {
-      final String text = utf8.decode(await _session.decrypt(envelope));
-      _recvIndex++;
-      messages.add(
-        ChatMessage(text: text, outgoing: false, time: DateTime.now()),
-      );
-      changed = true;
+      try {
+        final String text = utf8.decode(await _session.decrypt(envelope));
+        _recvIndex++;
+        messages.add(
+          ChatMessage(text: text, outgoing: false, time: DateTime.now()),
+        );
+        changed = true;
+      } catch (_) {
+        // Skip a corrupted / undeliverable envelope. Decryption rolls the
+        // ratchet back on failure, so this cannot desync the session.
+      }
     }
     if (changed) notifyListeners();
   }

@@ -203,27 +203,56 @@ class DoubleRatchet {
         Uint8List.fromList(message.sublist(RatchetHeader.byteLength));
     final RatchetHeader header = RatchetHeader.fromBytes(headerBytes);
 
-    final Uint8List? fromSkipped =
-        await _trySkippedKeys(header, headerBytes, cipher);
-    if (fromSkipped != null) return fromSkipped;
+    // Snapshot the mutable state so an authentication failure (a corrupted or
+    // injected envelope) rolls back cleanly instead of corrupting the session.
+    final SimpleKeyPair sDhs = _dhs;
+    final Uint8List sDhsPub = _dhsPub;
+    final Uint8List? sDhr = _dhr;
+    final Uint8List sRk = _rk;
+    final Uint8List? sCks = _cks;
+    final Uint8List? sCkr = _ckr;
+    final int sNs = _ns;
+    final int sNr = _nr;
+    final int sPn = _pn;
+    final Map<String, Uint8List> sSkipped = Map<String, Uint8List>.of(_skipped);
 
-    if (_dhr == null || !Primitives.constantTimeEquals(header.dhPub, _dhr!)) {
-      await _skipMessageKeys(header.pn); // finish the old receiving chain
-      await _dhRatchet(header);
+    try {
+      final Uint8List? fromSkipped =
+          await _trySkippedKeys(header, headerBytes, cipher);
+      if (fromSkipped != null) return fromSkipped;
+
+      if (_dhr == null || !Primitives.constantTimeEquals(header.dhPub, _dhr!)) {
+        await _skipMessageKeys(header.pn); // finish the old receiving chain
+        await _dhRatchet(header);
+      }
+      await _skipMessageKeys(header.n); // skip within the current chain
+
+      final (Uint8List ckr, Uint8List mk) = await _kdfCk(_ckr!);
+      _ckr = ckr;
+      _nr += 1;
+
+      final (Uint8List key, Uint8List nonce) = await _messageKeys(mk);
+      return await Primitives.aeadDecrypt(
+        key: key,
+        nonce: nonce,
+        cipherWithTag: cipher,
+        aad: headerBytes,
+      );
+    } catch (_) {
+      _dhs = sDhs;
+      _dhsPub = sDhsPub;
+      _dhr = sDhr;
+      _rk = sRk;
+      _cks = sCks;
+      _ckr = sCkr;
+      _ns = sNs;
+      _nr = sNr;
+      _pn = sPn;
+      _skipped
+        ..clear()
+        ..addAll(sSkipped);
+      rethrow;
     }
-    await _skipMessageKeys(header.n); // skip within the current chain
-
-    final (Uint8List ckr, Uint8List mk) = await _kdfCk(_ckr!);
-    _ckr = ckr;
-    _nr += 1;
-
-    final (Uint8List key, Uint8List nonce) = await _messageKeys(mk);
-    return Primitives.aeadDecrypt(
-      key: key,
-      nonce: nonce,
-      cipherWithTag: cipher,
-      aad: headerBytes,
-    );
   }
 
   // ---------------------------------------------------------------------------

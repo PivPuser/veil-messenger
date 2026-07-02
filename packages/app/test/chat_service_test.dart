@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +60,14 @@ void main() {
 
     // Bob -> Alice
     await bobCtl.send('здарова');
+    // A corrupted envelope lands in the same mailbox; poll must skip it and
+    // still deliver the real message.
+    final String box = await Mailbox.id(
+      accepted.session.mailboxSeed,
+      Mailbox.responderToInitiator,
+      0,
+    );
+    await bobNet.send(box, Uint8List.fromList(List<int>.filled(80, 0)));
     await aliceCtl.poll();
     expect(
       aliceCtl.messages.where((m) => !m.outgoing).map((m) => m.text),

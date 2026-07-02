@@ -191,6 +191,19 @@ void main() {
       expect(utf8.decode(await s.bob.decrypt(m2)), 'm2');
     });
 
+    test('a corrupted message does not corrupt the session', () async {
+      final s = await establish();
+
+      final Uint8List wire = await s.alice.encrypt(utf8.encode('привет'));
+      final Uint8List tampered = Uint8List.fromList(wire);
+      tampered[tampered.length - 1] ^= 0xFF; // break the auth tag
+
+      // Decrypting the tampered copy fails but must roll back cleanly...
+      await expectLater(s.bob.decrypt(tampered), throwsA(anything));
+      // ...so the original still decrypts correctly.
+      expect(utf8.decode(await s.bob.decrypt(wire)), 'привет');
+    });
+
     test('a responder cannot send before receiving', () async {
       final Identity bob = await Identity.generate();
       final PreKeys bobPreKeys = await PreKeys.generate(bob);
