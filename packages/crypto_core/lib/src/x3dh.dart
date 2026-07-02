@@ -40,9 +40,9 @@ class X3dh {
     required Identity initiator,
     required InviteKey invite,
   }) async {
-    if (!await invite.verifySignedPreKey()) {
+    if (!await invite.verify()) {
       throw StateError(
-        'Invalid signed pre-key signature — refusing X3DH handshake.',
+        'Invalid invite signature — refusing X3DH handshake.',
       );
     }
 
@@ -76,6 +76,7 @@ class X3dh {
     return InitialHandshake(
       identitySignPub: await initiator.signPublicBytes(),
       identityDhPub: await initiator.dhPublicBytes(),
+      identityDhSignature: await initiator.dhBindingSignature(),
       ephemeralPub: await Primitives.dhPublicBytes(ephemeral),
       usedOneTimeKey: invite.hasOneTimePreKey,
       sharedSecret: sk,
@@ -129,6 +130,7 @@ class InitialHandshake {
   InitialHandshake({
     required this.identitySignPub,
     required this.identityDhPub,
+    required this.identityDhSignature,
     required this.ephemeralPub,
     required this.usedOneTimeKey,
     required this.sharedSecret,
@@ -136,6 +138,7 @@ class InitialHandshake {
 
   final Uint8List identitySignPub;
   final Uint8List identityDhPub;
+  final Uint8List identityDhSignature; // binds identityDhPub to identitySignPub
   final Uint8List ephemeralPub;
   final bool usedOneTimeKey;
   final Uint8List sharedSecret;

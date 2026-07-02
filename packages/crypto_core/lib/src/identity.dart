@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -43,6 +44,33 @@ class Identity {
       Primitives.signPublicBytes(signKeyPair);
 
   Future<Uint8List> dhPublicBytes() => Primitives.dhPublicBytes(dhKeyPair);
+
+  /// Signs this identity's X25519 public key with its Ed25519 key, binding the
+  /// two. A peer verifies this so that authenticating the Ed25519 identity (via
+  /// the safety number) also authenticates the X25519 key actually used in the
+  /// X3DH handshake — without it, the safety number and the channel are
+  /// cryptographically unlinked.
+  Future<Uint8List> dhBindingSignature() async {
+    final Uint8List dhPub = await dhPublicBytes();
+    return Primitives.sign(_bindingMessage(dhPub), signKeyPair);
+  }
+
+  static Future<bool> verifyDhBinding({
+    required Uint8List signPub,
+    required Uint8List dhPub,
+    required Uint8List signature,
+  }) {
+    return Primitives.verify(
+      _bindingMessage(dhPub),
+      signature,
+      Primitives.signPublicFromBytes(signPub),
+    );
+  }
+
+  static const String _dhBindingContext = 'veil-identity-dh-binding-v1';
+
+  static List<int> _bindingMessage(Uint8List dhPub) =>
+      <int>[...utf8.encode(_dhBindingContext), ...dhPub];
 
   /// Serializes the PRIVATE key material. Store only inside an encrypted vault
   /// (see [SecretVault]) — never in the clear.

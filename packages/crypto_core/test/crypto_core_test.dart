@@ -22,8 +22,12 @@ void main() {
           equals(original.signedPreKeySignature));
       expect(decoded.rendezvousId, equals(original.rendezvousId));
       expect(decoded.rendezvousId.length, InviteKey.rendezvousLength);
+      expect(decoded.identityDhSignature,
+          equals(original.identityDhSignature));
       expect(decoded.oneTimePreKeyPub, equals(original.oneTimePreKeyPub));
       expect(await decoded.verifySignedPreKey(), isTrue);
+      expect(await decoded.verifyIdentityBinding(), isTrue);
+      expect(await decoded.verify(), isTrue);
     });
 
     test('encodes without a one-time pre-key', () async {
@@ -105,6 +109,21 @@ void main() {
       final PreKeys preKeys = await PreKeys.generate(bob);
       final InviteKey invite = await InviteKey.create(bob, preKeys);
       invite.signedPreKeySignature[0] ^= 0xFF; // corrupt the signature
+
+      final Identity alice = await Identity.generate();
+      await expectLater(
+        X3dh.initiator(initiator: alice, invite: invite),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('refuses an invite with a forged identity binding', () async {
+      final Identity bob = await Identity.generate();
+      final PreKeys preKeys = await PreKeys.generate(bob);
+      final InviteKey invite = await InviteKey.create(bob, preKeys);
+      invite.identityDhSignature[0] ^= 0xFF; // corrupt the DH binding
+
+      expect(await invite.verifyIdentityBinding(), isFalse);
 
       final Identity alice = await Identity.generate();
       await expectLater(

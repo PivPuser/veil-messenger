@@ -17,14 +17,14 @@ import 'x3dh.dart';
 /// Wire framing produced by [encrypt]:
 ///   type (1) | [initial handshake preamble] | ratchet message
 ///     type 0x01 = initial   : preamble = identitySignPub(32) identityDhPub(32)
-///                             ephemeralPub(32) flags(1)
+///                             ephemeralPub(32) identityDhSignature(64) flags(1)
 ///     type 0x02 = subsequent : no preamble
 class Session {
   Session._(this._ratchet, this._pendingHandshake, this.mailboxSeed);
 
   static const int _typeInitial = 0x01;
   static const int _typeNormal = 0x02;
-  static const int _preambleLength = 32 + 32 + 32 + 1;
+  static const int _preambleLength = 32 + 32 + 32 + 64 + 1;
 
   final DoubleRatchet _ratchet;
   InitialHandshake? _pendingHandshake; // non-null until the first message sent
@@ -86,12 +86,23 @@ class Session {
       return slice;
     }
 
-    take(32); // initiator identity signing key (bound via ratchet AAD later)
+    final Uint8List initiatorSignPub = take(32);
     final Uint8List initiatorDhPub = take(32);
     final Uint8List initiatorEphemeralPub = take(32);
+    final Uint8List initiatorDhSignature = take(64);
     final bool usedOneTimeKey = firstMessage[offset] == 1;
     offset += 1;
     final Uint8List ratchetBody = Uint8List.fromList(firstMessage.sublist(offset));
+
+    // Bind the initiator's Ed25519 identity to the X25519 key used below, so
+    // authenticating the identity (safety number) authenticates the channel.
+    if (!await Identity.verifyDhBinding(
+      signPub: initiatorSignPub,
+      dhPub: initiatorDhPub,
+      signature: initiatorDhSignature,
+    )) {
+      throw StateError('Initiator identity binding is invalid — refusing.');
+    }
 
     final Uint8List sharedSecret = await X3dh.responderSharedSecret(
       responder: me,
@@ -124,6 +135,7 @@ class Session {
         ..add(hs.identitySignPub)
         ..add(hs.identityDhPub)
         ..add(hs.ephemeralPub)
+        ..add(hs.identityDhSignature)
         ..addByte(hs.usedOneTimeKey ? 1 : 0)
         ..add(body);
       return b.toBytes();
@@ -166,6 +178,7 @@ class Session {
         ..boolean(true)
         ..bytes(hs.identitySignPub)
         ..bytes(hs.identityDhPub)
+        ..bytes(hs.identityDhSignature)
         ..bytes(hs.ephemeralPub)
         ..boolean(hs.usedOneTimeKey)
         ..bytes(hs.sharedSecret);
@@ -182,6 +195,7 @@ class Session {
       hs = InitialHandshake(
         identitySignPub: r.bytes(),
         identityDhPub: r.bytes(),
+        identityDhSignature: r.bytes(),
         ephemeralPub: r.bytes(),
         usedOneTimeKey: r.boolean(),
         sharedSecret: r.bytes(),

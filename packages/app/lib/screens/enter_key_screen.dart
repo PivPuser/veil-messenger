@@ -38,7 +38,7 @@ class _EnterKeyScreenState extends State<EnterKeyScreen> {
     });
     try {
       final InviteKey invite = await InviteKey.decode(text);
-      if (!await invite.verifySignedPreKey()) {
+      if (!await invite.verify()) {
         throw const FormatException('bad signature');
       }
       final Identity me = await IdentityService.instance.identity();

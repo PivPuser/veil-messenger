@@ -18,18 +18,20 @@ import 'primitives.dart';
 /// Wire form (bytes), then base64url with an `amk1:` prefix:
 ///
 ///   magic "AMK" (3) | version (1) | identitySignPub (32) | identityDhPub (32)
-///   | signedPreKeyPub (32) | signedPreKeySignature (64) | rendezvousId (16)
+///   | signedPreKeyPub (32) | signedPreKeySignature (64)
+///   | identityDhSignature (64) | rendezvousId (16)
 ///   | flags (1) [ | oneTimePreKeyPub (32) ] | checksum (4)
 ///
 /// The checksum is the first 4 bytes of SHA-256 over everything before it. It
 /// only guards against typos/truncation — integrity of the crypto material is
-/// enforced by verifying [signedPreKeySignature], NOT by the checksum.
+/// enforced by verifying the signatures ([verify]), NOT by the checksum.
 class InviteKey {
   InviteKey({
     required this.identitySignPub,
     required this.identityDhPub,
     required this.signedPreKeyPub,
     required this.signedPreKeySignature,
+    required this.identityDhSignature,
     required this.rendezvousId,
     this.oneTimePreKeyPub,
   });
@@ -44,6 +46,7 @@ class InviteKey {
   final Uint8List identityDhPub; // 32
   final Uint8List signedPreKeyPub; // 32
   final Uint8List signedPreKeySignature; // 64
+  final Uint8List identityDhSignature; // 64 — binds identityDhPub to identitySign
   final Uint8List rendezvousId; // 16
   final Uint8List? oneTimePreKeyPub; // 32 or null
 
@@ -61,6 +64,7 @@ class InviteKey {
       identityDhPub: await identity.dhPublicBytes(),
       signedPreKeyPub: await Primitives.dhPublicBytes(preKeys.signedPreKey),
       signedPreKeySignature: preKeys.signedPreKeySignature,
+      identityDhSignature: await identity.dhBindingSignature(),
       rendezvousId: rendezvousId ?? _randomBytes(rendezvousLength),
       oneTimePreKeyPub: preKeys.oneTimePreKey == null
           ? null
@@ -77,6 +81,7 @@ class InviteKey {
     body.add(identityDhPub);
     body.add(signedPreKeyPub);
     body.add(signedPreKeySignature);
+    body.add(identityDhSignature);
     body.add(rendezvousId);
     body.addByte(hasOneTimePreKey ? 1 : 0);
     if (hasOneTimePreKey) body.add(oneTimePreKeyPub!);
@@ -111,6 +116,7 @@ class InviteKey {
         32 +
         32 +
         32 +
+        64 +
         64 +
         rendezvousLength +
         1 +
@@ -152,6 +158,7 @@ class InviteKey {
     final Uint8List dhPub = take(32);
     final Uint8List spkPub = take(32);
     final Uint8List spkSig = take(64);
+    final Uint8List idDhSig = take(64);
     final Uint8List rendezvous = take(rendezvousLength);
     final bool hasOpk = take(1)[0] == 1;
     final Uint8List? opk = hasOpk ? take(32) : null;
@@ -161,13 +168,13 @@ class InviteKey {
       identityDhPub: dhPub,
       signedPreKeyPub: spkPub,
       signedPreKeySignature: spkSig,
+      identityDhSignature: idDhSig,
       rendezvousId: rendezvous,
       oneTimePreKeyPub: opk,
     );
   }
 
   /// Verifies that the signed pre-key was really signed by the identity key.
-  /// A failure here means the invite is forged or tampered — refuse it.
   Future<bool> verifySignedPreKey() {
     return Primitives.verify(
       signedPreKeyPub,
@@ -175,6 +182,21 @@ class InviteKey {
       Primitives.signPublicFromBytes(identitySignPub),
     );
   }
+
+  /// Verifies that the identity DH key is bound to the identity signing key.
+  Future<bool> verifyIdentityBinding() {
+    return Identity.verifyDhBinding(
+      signPub: identitySignPub,
+      dhPub: identityDhPub,
+      signature: identityDhSignature,
+    );
+  }
+
+  /// Full cryptographic validation of the invite (both signatures). A failure
+  /// means the invite is forged or tampered — refuse it. The handshake calls
+  /// this automatically.
+  Future<bool> verify() async =>
+      await verifySignedPreKey() && await verifyIdentityBinding();
 
   static Uint8List _randomBytes(int n) {
     final Random rng = Random.secure();
