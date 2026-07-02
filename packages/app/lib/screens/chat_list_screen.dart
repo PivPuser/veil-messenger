@@ -4,6 +4,7 @@ import '../models/chat.dart';
 import '../theme.dart';
 import 'create_key_screen.dart';
 import 'enter_key_screen.dart';
+import 'settings_screen.dart';
 
 /// Home screen: the list of conversations, Telegram-style, with a compose FAB
 /// that offers "create key" / "enter key".
@@ -36,6 +37,7 @@ class ChatListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const _AppDrawer(),
       appBar: AppBar(
         title: const Text('veil'),
         actions: <Widget>[
@@ -169,6 +171,46 @@ class _ChatTile extends StatelessWidget {
         ],
       ),
       onTap: () {},
+    );
+  }
+}
+
+class _AppDrawer extends StatelessWidget {
+  const _AppDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const DrawerHeader(
+            decoration: BoxDecoration(color: VeilColors.primary),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Text(
+                'veil',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('Настройки'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

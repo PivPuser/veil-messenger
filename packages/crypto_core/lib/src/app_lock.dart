@@ -40,9 +40,15 @@ class DataWipedException implements Exception {
 /// The attempt counter is persisted BEFORE each check, so force-quitting the
 /// app between attempts cannot reset it — the wipe policy can't be dodged.
 class AppLock {
-  AppLock(this._storage);
+  AppLock(this._storage, {this.kdfIterations = 210000});
 
   final LockStorage _storage;
+
+  /// PBKDF2 iteration count used when enabling the lock. Stored in the lock
+  /// metadata so unlocking always uses the same value the key was derived with
+  /// (and so the cost can be raised in future versions without breaking old
+  /// vaults). Tests may lower it for speed.
+  final int kdfIterations;
 
   static const String _metaKey = 'lock.meta';
 
@@ -77,8 +83,11 @@ class AppLock {
       throw ArgumentError('password must be exactly $passwordLength characters');
     }
     final Uint8List salt = SecretVault.newSalt();
-    final Uint8List key =
-        await SecretVault.deriveKey(passphrase: password, salt: salt);
+    final Uint8List key = await SecretVault.deriveKey(
+      passphrase: password,
+      salt: salt,
+      iterations: kdfIterations,
+    );
     final Uint8List verifier = await SecretVault.seal(
       masterKey: key,
       plaintext: utf8.encode('veil-lock-verifier-v1'),
@@ -89,6 +98,7 @@ class AppLock {
       passwordLength: passwordLength,
       maxAttempts: maxAttempts,
       failedAttempts: 0,
+      iterations: kdfIterations,
     ));
     return key;
   }
@@ -110,8 +120,11 @@ class AppLock {
     meta.failedAttempts += 1;
     await _saveMeta(meta);
 
-    final Uint8List key =
-        await SecretVault.deriveKey(passphrase: password, salt: meta.salt);
+    final Uint8List key = await SecretVault.deriveKey(
+      passphrase: password,
+      salt: meta.salt,
+      iterations: meta.iterations,
+    );
     bool correct;
     try {
       await SecretVault.open(masterKey: key, blob: meta.verifier);
@@ -153,6 +166,7 @@ class _LockMeta {
     required this.passwordLength,
     required this.maxAttempts,
     required this.failedAttempts,
+    required this.iterations,
   });
 
   final Uint8List salt;
@@ -160,6 +174,7 @@ class _LockMeta {
   final int passwordLength;
   final int maxAttempts;
   int failedAttempts;
+  final int iterations;
 
   Uint8List serialize() {
     final ByteWriter w = ByteWriter()
@@ -167,7 +182,8 @@ class _LockMeta {
       ..bytes(verifier)
       ..u32(passwordLength)
       ..u32(maxAttempts)
-      ..u32(failedAttempts);
+      ..u32(failedAttempts)
+      ..u32(iterations);
     return w.toBytes();
   }
 
@@ -179,6 +195,7 @@ class _LockMeta {
       passwordLength: r.u32(),
       maxAttempts: r.u32(),
       failedAttempts: r.u32(),
+      iterations: r.u32(),
     );
   }
 }
