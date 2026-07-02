@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,8 +25,8 @@ void main() {
         builder: (BuildContext context) => Scaffold(
           body: Center(
             child: ElevatedButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
+              onPressed: () => Navigator.of(context).push<Uint8List>(
+                MaterialPageRoute<Uint8List>(
                   builder: (_) => SetPasscodeScreen(appLock: lock),
                 ),
               ),

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter/material.dart';
 
@@ -5,7 +7,8 @@ import '../theme.dart';
 import '../widgets/passcode_pad.dart';
 
 /// Lets the user pick a passcode length (4 / 6 / 12) and set it (enter + confirm).
-/// On success it enables [appLock] and pops `true`.
+/// On success it enables [appLock] and pops the derived master key (or null if
+/// cancelled), so the caller can seal existing data under it.
 class SetPasscodeScreen extends StatefulWidget {
   const SetPasscodeScreen({super.key, required this.appLock});
 
@@ -48,9 +51,10 @@ class _SetPasscodeScreenState extends State<SetPasscodeScreen> {
       return;
     }
     if (_entry == _first) {
-      await widget.appLock.enable(password: _entry, passwordLength: _length);
+      final Uint8List masterKey = await widget.appLock
+          .enable(password: _entry, passwordLength: _length);
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(masterKey);
     } else {
       setState(() {
         _error = 'Коды не совпадают. Попробуй снова.';

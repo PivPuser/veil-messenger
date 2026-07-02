@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
+import '../services/identity_service.dart';
 import '../services/lock_service.dart';
 import '../services/relay_config.dart';
 import '../theme.dart';
@@ -34,13 +37,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _togglePasscode(bool value) async {
     if (value) {
-      final bool? done = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(
+      final Uint8List? masterKey = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute<Uint8List>(
           builder: (_) =>
               SetPasscodeScreen(appLock: LockService.instance.lock),
         ),
       );
-      if (done == true && mounted) setState(() => _passcodeOn = true);
+      if (masterKey == null) return;
+      // Seal the current identity under the new passcode key so it survives
+      // restarts and is protected at rest.
+      final identity = await IdentityService.instance.identity();
+      await LockService.instance.vaultStore.saveIdentity(identity, masterKey);
+      IdentityService.instance.configure(
+        store: LockService.instance.vaultStore,
+        masterKey: masterKey,
+      );
+      if (mounted) setState(() => _passcodeOn = true);
     } else {
       final bool ok = await _confirmDisable();
       if (!ok) return;

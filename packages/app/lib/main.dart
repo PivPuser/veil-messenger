@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'screens/chat_list_screen.dart';
 import 'screens/lock_screen.dart';
+import 'services/identity_service.dart';
 import 'services/lock_service.dart';
 import 'theme.dart';
 
@@ -62,8 +64,19 @@ class _AppGateState extends State<AppGate> {
     if (locked) {
       return LockScreen(
         appLock: LockService.instance.lock,
-        onUnlocked: (_) => setState(() => _locked = false),
-        onWiped: () => setState(() => _locked = false),
+        onUnlocked: (Uint8List key) {
+          // Unlock succeeded: open the encrypted identity vault with the key.
+          IdentityService.instance.configure(
+            store: LockService.instance.vaultStore,
+            masterKey: key,
+          );
+          setState(() => _locked = false);
+        },
+        onWiped: () {
+          // Everything is gone: drop in-memory secrets too.
+          IdentityService.instance.reset();
+          setState(() => _locked = false);
+        },
       );
     }
     return const ChatListScreen();
