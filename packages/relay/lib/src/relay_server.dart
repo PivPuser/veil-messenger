@@ -12,20 +12,37 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 ///   * It stores opaque byte blobs keyed by an opaque mailbox id.
 ///   * It has NO concept of accounts, identities, contacts or plaintext.
 ///   * Storage is in-memory only — nothing is written to disk, so seizing the
-///     machine yields no history. A production relay would add a short TTL and
-///     size caps; this prototype keeps envelopes until fetched.
+///     machine yields no history.
 ///   * On fetch, envelopes are handed over and immediately dropped.
+///
+/// Denial-of-service bounds:
+///   * [maxEnvelopeBytes] / [maxEnvelopesPerMailbox] cap a single mailbox.
+///   * [maxMailboxes] caps the total number of mailboxes; creating one past the
+///     cap evicts the oldest (so an attacker POSTing to endless random ids
+///     can't exhaust memory).
+///   * [messageTtl] expires envelopes; a throttled lazy sweep drops them.
 ///
 /// HTTP API:
 ///   POST /mailbox/{id}   body = raw envelope bytes      -> 200
 ///   GET  /mailbox/{id}   -> {"messages": ["<base64>", ...]}  (and clears them)
 class RelayServer {
-  RelayServer({this.maxEnvelopesPerMailbox = 1000, this.maxEnvelopeBytes = 1 << 20});
+  RelayServer({
+    this.maxEnvelopesPerMailbox = 1000,
+    this.maxEnvelopeBytes = 1 << 20,
+    this.maxMailboxes = 100000,
+    this.messageTtl = const Duration(days: 7),
+    this.sweepInterval = const Duration(minutes: 1),
+  });
 
   final int maxEnvelopesPerMailbox;
   final int maxEnvelopeBytes;
+  final int maxMailboxes;
+  final Duration messageTtl;
+  final Duration sweepInterval;
 
-  final Map<String, List<Uint8List>> _inboxes = <String, List<Uint8List>>{};
+  // Insertion-ordered, so the first key is the oldest mailbox.
+  final Map<String, _Mailbox> _inboxes = <String, _Mailbox>{};
+  DateTime _lastSweep = DateTime.fromMillisecondsSinceEpoch(0);
   HttpServer? _server;
 
   /// Starts listening. Returns the base [Uri]. Use port 0 for an ephemeral port.
@@ -69,22 +86,48 @@ class RelayServer {
     if (body.length > maxEnvelopeBytes) {
       return Response(HttpStatus.requestEntityTooLarge);
     }
-    final List<Uint8List> box = _inboxes.putIfAbsent(id, () => <Uint8List>[]);
-    if (box.length >= maxEnvelopesPerMailbox) {
+
+    _sweepIfDue();
+
+    _Mailbox? box = _inboxes[id];
+    if (box == null) {
+      if (_inboxes.length >= maxMailboxes) {
+        _evictOldest();
+      }
+      box = _Mailbox();
+      _inboxes[id] = box;
+    }
+    if (box.envelopes.length >= maxEnvelopesPerMailbox) {
       return Response(HttpStatus.insufficientStorage, body: 'mailbox full');
     }
-    box.add(body);
+    box.envelopes.add(body);
     return Response.ok('');
   }
 
   Response _collect(String id) {
-    final List<Uint8List>? box = _inboxes.remove(id);
+    _sweepIfDue();
+    final _Mailbox? box = _inboxes.remove(id);
     final List<String> encoded = <String>[
-      for (final Uint8List env in box ?? const <Uint8List>[]) base64.encode(env),
+      for (final Uint8List env in box?.envelopes ?? const <Uint8List>[])
+        base64.encode(env),
     ];
     return Response.ok(
       jsonEncode(<String, dynamic>{'messages': encoded}),
       headers: <String, String>{'content-type': 'application/json'},
+    );
+  }
+
+  void _evictOldest() {
+    if (_inboxes.isEmpty) return;
+    _inboxes.remove(_inboxes.keys.first);
+  }
+
+  void _sweepIfDue() {
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastSweep) < sweepInterval) return;
+    _lastSweep = now;
+    _inboxes.removeWhere(
+      (_, _Mailbox box) => now.difference(box.createdAt) > messageTtl,
     );
   }
 
@@ -105,4 +148,11 @@ class RelayServer {
     }
     return builder.toBytes();
   }
+}
+
+class _Mailbox {
+  _Mailbox() : createdAt = DateTime.now();
+
+  final List<Uint8List> envelopes = <Uint8List>[];
+  final DateTime createdAt;
 }

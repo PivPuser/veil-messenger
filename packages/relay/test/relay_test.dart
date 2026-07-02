@@ -74,4 +74,40 @@ void main() {
       expect(a, isNot(equals(b)));
     });
   });
+
+  group('DoS bounds', () {
+    test('evicts the oldest mailbox past the cap', () async {
+      final RelayServer server = RelayServer(maxMailboxes: 2);
+      final Uri uri = await server.start();
+      final RelayClient client = RelayClient(uri);
+      addTearDown(() async {
+        client.close();
+        await server.stop();
+      });
+
+      await client.send('aa', Uint8List.fromList(<int>[1]));
+      await client.send('bb', Uint8List.fromList(<int>[2]));
+      await client.send('cc', Uint8List.fromList(<int>[3])); // evicts 'aa'
+
+      expect(await client.fetch('aa'), isEmpty); // oldest, evicted
+      expect(await client.fetch('cc'), hasLength(1)); // newest, kept
+    });
+
+    test('drops envelopes past the TTL', () async {
+      final RelayServer server = RelayServer(
+        messageTtl: const Duration(milliseconds: 1),
+        sweepInterval: Duration.zero,
+      );
+      final Uri uri = await server.start();
+      final RelayClient client = RelayClient(uri);
+      addTearDown(() async {
+        client.close();
+        await server.stop();
+      });
+
+      await client.send('dd', Uint8List.fromList(<int>[9]));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(await client.fetch('dd'), isEmpty);
+    });
+  });
 }
