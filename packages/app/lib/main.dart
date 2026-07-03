@@ -8,6 +8,7 @@ import 'screens/chat_list_screen.dart';
 import 'screens/lock_screen.dart';
 import 'services/identity_service.dart';
 import 'services/lock_service.dart';
+import 'services/receive_service.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -41,18 +42,44 @@ class AppGate extends StatefulWidget {
   State<AppGate> createState() => _AppGateState();
 }
 
-class _AppGateState extends State<AppGate> {
+class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
   bool? _locked; // null = still checking
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _check() async {
     final bool enabled = await LockService.instance.lock.isEnabled();
     if (mounted) setState(() => _locked = enabled);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Auto-lock: when the app leaves the foreground, re-require the passcode and
+    // drop in-memory secrets, so grabbing an unlocked phone reveals nothing.
+    if (state == AppLifecycleState.paused) _maybeRelock();
+  }
+
+  Future<void> _maybeRelock() async {
+    if (_locked != false) return;
+    if (!await LockService.instance.lock.isEnabled()) return;
+    _clearMemorySecrets();
+    if (mounted) setState(() => _locked = true);
+  }
+
+  void _clearMemorySecrets() {
+    IdentityService.instance.reset();
+    ReceiveService.instance.clear();
   }
 
   @override
@@ -74,7 +101,7 @@ class _AppGateState extends State<AppGate> {
         },
         onWiped: () {
           // Everything is gone: drop in-memory secrets too.
-          IdentityService.instance.reset();
+          _clearMemorySecrets();
           setState(() => _locked = false);
         },
       );
