@@ -2,8 +2,10 @@ import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:relay/relay.dart';
 
 import '../services/identity_service.dart';
+import '../services/receive_service.dart';
 import '../theme.dart';
 
 /// Чел1: generates a fresh signed pre-key bundle and shows the shareable
@@ -22,6 +24,9 @@ class _CreateKeyScreenState extends State<CreateKeyScreen> {
     final Identity identity = await IdentityService.instance.identity();
     final PreKeys preKeys = await PreKeys.generate(identity);
     final InviteKey invite = await InviteKey.create(identity, preKeys);
+    // Keep the private pre-keys so we (Чел1) can accept the incoming handshake.
+    ReceiveService.instance
+        .register(Mailbox.toHex(invite.rendezvousId), preKeys);
     return invite.encode();
   }
 
