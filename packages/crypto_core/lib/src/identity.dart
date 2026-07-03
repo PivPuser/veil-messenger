@@ -72,6 +72,39 @@ class Identity {
   static List<int> _bindingMessage(Uint8List dhPub) =>
       <int>[...utf8.encode(_dhBindingContext), ...dhPub];
 
+  /// Like [dhBindingSignature] but also commits to an invite expiry (millis
+  /// since epoch, 0 = never). An intercepted invite stops working past its
+  /// expiry, and the expiry can't be extended without breaking the signature.
+  Future<Uint8List> inviteBindingSignature(int expiresAtMillis) async {
+    final Uint8List dhPub = await dhPublicBytes();
+    return Primitives.sign(
+        _inviteBindingMessage(dhPub, expiresAtMillis), signKeyPair);
+  }
+
+  static Future<bool> verifyInviteBinding({
+    required Uint8List signPub,
+    required Uint8List dhPub,
+    required int expiresAtMillis,
+    required Uint8List signature,
+  }) {
+    return Primitives.verify(
+      _inviteBindingMessage(dhPub, expiresAtMillis),
+      signature,
+      Primitives.signPublicFromBytes(signPub),
+    );
+  }
+
+  static const String _inviteBindingContext = 'veil-invite-binding-v1';
+
+  static List<int> _inviteBindingMessage(Uint8List dhPub, int expiresAtMillis) {
+    final ByteData e = ByteData(8)..setUint64(0, expiresAtMillis, Endian.big);
+    return <int>[
+      ...utf8.encode(_inviteBindingContext),
+      ...dhPub,
+      ...e.buffer.asUint8List(),
+    ];
+  }
+
   /// Serializes the PRIVATE key material. Store only inside an encrypted vault
   /// (see [SecretVault]) — never in the clear.
   Future<Uint8List> serialize() async {

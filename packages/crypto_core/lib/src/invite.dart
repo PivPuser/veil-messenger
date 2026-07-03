@@ -33,6 +33,7 @@ class InviteKey {
     required this.signedPreKeySignature,
     required this.identityDhSignature,
     required this.rendezvousId,
+    required this.expiresAtMillis,
     this.oneTimePreKeyPub,
   });
 
@@ -46,26 +47,39 @@ class InviteKey {
   final Uint8List identityDhPub; // 32
   final Uint8List signedPreKeyPub; // 32
   final Uint8List signedPreKeySignature; // 64
-  final Uint8List identityDhSignature; // 64 — binds identityDhPub to identitySign
+  final Uint8List identityDhSignature; // 64 — binds identityDhPub + expiry
   final Uint8List rendezvousId; // 16
+  final int expiresAtMillis; // millis since epoch; 0 = never expires
   final Uint8List? oneTimePreKeyPub; // 32 or null
 
   bool get hasOneTimePreKey => oneTimePreKeyPub != null;
 
+  /// True if the invite has an expiry in the past.
+  bool get isExpired =>
+      expiresAtMillis != 0 &&
+      DateTime.now().millisecondsSinceEpoch > expiresAtMillis;
+
   /// Builds an invite from a local identity and freshly generated pre-keys.
-  /// A random [rendezvousId] is generated unless one is supplied.
+  /// A random [rendezvousId] is generated unless one is supplied. The invite
+  /// expires after [validity] (pass [Duration.zero] for a non-expiring invite).
   static Future<InviteKey> create(
     Identity identity,
     PreKeys preKeys, {
     Uint8List? rendezvousId,
+    Duration validity = const Duration(days: 7),
   }) async {
+    final int expiresAtMillis = validity == Duration.zero
+        ? 0
+        : DateTime.now().add(validity).millisecondsSinceEpoch;
     return InviteKey(
       identitySignPub: await identity.signPublicBytes(),
       identityDhPub: await identity.dhPublicBytes(),
       signedPreKeyPub: await Primitives.dhPublicBytes(preKeys.signedPreKey),
       signedPreKeySignature: preKeys.signedPreKeySignature,
-      identityDhSignature: await identity.dhBindingSignature(),
+      identityDhSignature:
+          await identity.inviteBindingSignature(expiresAtMillis),
       rendezvousId: rendezvousId ?? _randomBytes(rendezvousLength),
+      expiresAtMillis: expiresAtMillis,
       oneTimePreKeyPub: preKeys.oneTimePreKey == null
           ? null
           : await Primitives.dhPublicBytes(preKeys.oneTimePreKey!),
@@ -83,6 +97,8 @@ class InviteKey {
     body.add(signedPreKeySignature);
     body.add(identityDhSignature);
     body.add(rendezvousId);
+    final ByteData exp = ByteData(8)..setUint64(0, expiresAtMillis, Endian.big);
+    body.add(exp.buffer.asUint8List());
     body.addByte(hasOneTimePreKey ? 1 : 0);
     if (hasOneTimePreKey) body.add(oneTimePreKeyPub!);
 
@@ -119,6 +135,7 @@ class InviteKey {
         64 +
         64 +
         rendezvousLength +
+        8 +
         1 +
         _checksumLength; // no one-time key
     if (full.length < minLen) {
@@ -160,6 +177,8 @@ class InviteKey {
     final Uint8List spkSig = take(64);
     final Uint8List idDhSig = take(64);
     final Uint8List rendezvous = take(rendezvousLength);
+    final int expiresAtMillis =
+        ByteData.sublistView(take(8)).getUint64(0, Endian.big);
     final bool hasOpk = take(1)[0] == 1;
     final Uint8List? opk = hasOpk ? take(32) : null;
 
@@ -170,6 +189,7 @@ class InviteKey {
       signedPreKeySignature: spkSig,
       identityDhSignature: idDhSig,
       rendezvousId: rendezvous,
+      expiresAtMillis: expiresAtMillis,
       oneTimePreKeyPub: opk,
     );
   }
@@ -183,20 +203,24 @@ class InviteKey {
     );
   }
 
-  /// Verifies that the identity DH key is bound to the identity signing key.
+  /// Verifies that the identity DH key and the expiry are bound to the identity
+  /// signing key (so neither can be swapped or the expiry extended).
   Future<bool> verifyIdentityBinding() {
-    return Identity.verifyDhBinding(
+    return Identity.verifyInviteBinding(
       signPub: identitySignPub,
       dhPub: identityDhPub,
+      expiresAtMillis: expiresAtMillis,
       signature: identityDhSignature,
     );
   }
 
-  /// Full cryptographic validation of the invite (both signatures). A failure
-  /// means the invite is forged or tampered — refuse it. The handshake calls
-  /// this automatically.
+  /// Full validation of the invite: both signatures AND not expired. A failure
+  /// means the invite is forged, tampered or stale — refuse it. The handshake
+  /// calls this automatically.
   Future<bool> verify() async =>
-      await verifySignedPreKey() && await verifyIdentityBinding();
+      !isExpired &&
+      await verifySignedPreKey() &&
+      await verifyIdentityBinding();
 
   static Uint8List _randomBytes(int n) {
     final Random rng = Random.secure();

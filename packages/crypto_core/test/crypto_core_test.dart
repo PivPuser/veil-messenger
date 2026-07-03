@@ -24,6 +24,7 @@ void main() {
       expect(decoded.rendezvousId.length, InviteKey.rendezvousLength);
       expect(decoded.identityDhSignature,
           equals(original.identityDhSignature));
+      expect(decoded.expiresAtMillis, equals(original.expiresAtMillis));
       expect(decoded.oneTimePreKeyPub, equals(original.oneTimePreKeyPub));
       expect(await decoded.verifySignedPreKey(), isTrue);
       expect(await decoded.verifyIdentityBinding(), isTrue);
@@ -57,6 +58,35 @@ void main() {
 
     test('rejects a string without the amk1 prefix', () async {
       await expectLater(InviteKey.decode('hello'), throwsFormatException);
+    });
+
+    test('an expired invite fails verification and the handshake', () async {
+      final Identity bob = await Identity.generate();
+      final PreKeys preKeys = await PreKeys.generate(bob);
+      final InviteKey invite = await InviteKey.create(
+        bob,
+        preKeys,
+        validity: const Duration(milliseconds: -1), // already in the past
+      );
+      expect(invite.isExpired, isTrue);
+      expect(await invite.verifyIdentityBinding(), isTrue); // signature ok
+      expect(await invite.verify(), isFalse); // but expired
+
+      final Identity alice = await Identity.generate();
+      await expectLater(
+        X3dh.initiator(initiator: alice, invite: invite),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('a non-expiring invite (validity zero) verifies', () async {
+      final Identity bob = await Identity.generate();
+      final PreKeys preKeys = await PreKeys.generate(bob);
+      final InviteKey invite =
+          await InviteKey.create(bob, preKeys, validity: Duration.zero);
+      expect(invite.expiresAtMillis, 0);
+      expect(invite.isExpired, isFalse);
+      expect(await invite.verify(), isTrue);
     });
   });
 
