@@ -71,6 +71,26 @@ class SecretVault {
     );
   }
 
+  /// Derives a 32-byte master key from a passphrase with Argon2id (memory-hard).
+  /// Preferred over [deriveKey] for low-entropy PINs. On mobile, add
+  /// `cryptography_flutter` so this runs natively at production memory sizes.
+  static Future<Uint8List> deriveKeyArgon2id({
+    required String passphrase,
+    required Uint8List salt,
+    int memory = 19456,
+    int iterations = 2,
+    int parallelism = 1,
+  }) {
+    return Primitives.argon2id(
+      password: utf8.encode(passphrase),
+      salt: salt,
+      memory: memory,
+      iterations: iterations,
+      parallelism: parallelism,
+      bits: 256,
+    );
+  }
+
   /// A fresh random salt for [deriveKey].
   static Uint8List newSalt() => Primitives.randomBytes(16);
 

@@ -14,7 +14,7 @@ void main() {
     });
 
     final FileLockStorage storage = FileLockStorage(dir);
-    final AppLock lock = AppLock(storage);
+    final AppLock lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
 
     await lock.enable(password: '1234', passwordLength: 4);
     // A stand-in for the real data vault, to prove the wipe removes it too.

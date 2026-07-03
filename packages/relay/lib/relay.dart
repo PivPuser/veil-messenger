@@ -9,6 +9,7 @@ library relay;
 
 export 'src/mailbox.dart' show Mailbox;
 export 'src/relay_client.dart' show RelayClient;
+export 'src/relay_endpoint.dart' show RelayEndpoint, RelayScheme;
 export 'src/relay_server.dart' show RelayServer;
 export 'src/relay_transport.dart'
     show RelayTransport, RelayException, parseMailboxMessages;

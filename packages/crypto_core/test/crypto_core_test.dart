@@ -312,6 +312,16 @@ void main() {
       expect(k1, equals(k2));
       expect(k1, hasLength(32));
     });
+
+    test('argon2id derivation is deterministic and 32 bytes', () async {
+      final Uint8List salt = SecretVault.newSalt();
+      final Uint8List k1 = await SecretVault.deriveKeyArgon2id(
+          passphrase: 'pw', salt: salt, memory: 256, iterations: 1);
+      final Uint8List k2 = await SecretVault.deriveKeyArgon2id(
+          passphrase: 'pw', salt: salt, memory: 256, iterations: 1);
+      expect(k1, equals(k2));
+      expect(k1, hasLength(32));
+    });
   });
 
   group('SafetyNumber', () {

@@ -34,7 +34,7 @@ void main() {
     test('enable then unlock with the correct password returns the same key',
         () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       final Uint8List keyFromEnable =
           await lock.enable(password: '1234', passwordLength: 4);
 
@@ -48,7 +48,7 @@ void main() {
 
     test('one wrong password warns but does not wipe', () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       await lock.enable(password: '123456', passwordLength: 6);
 
       await expectLater(
@@ -62,7 +62,7 @@ void main() {
 
     test('two wrong passwords wipe all data', () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       await lock.enable(password: '1234', passwordLength: 4);
 
       await expectLater(
@@ -76,7 +76,7 @@ void main() {
 
     test('a correct password resets the counter', () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       await lock.enable(password: '1234', passwordLength: 4);
 
       await expectLater(
@@ -92,24 +92,24 @@ void main() {
 
     test('the attempt counter survives an app "restart"', () async {
       final storage = _MemStorage();
-      await AppLock(storage).enable(password: '1234', passwordLength: 4);
+      await AppLock(storage, kdfMemory: 256, kdfIterations: 1).enable(password: '1234', passwordLength: 4);
 
       // First wrong attempt on one AppLock instance.
       await expectLater(
-          AppLock(storage).unlock('0000'),
+          AppLock(storage, kdfMemory: 256, kdfIterations: 1).unlock('0000'),
           throwsA(isA<WrongPasswordException>()));
 
       // A fresh AppLock over the same storage (simulating a relaunch): the
       // second wrong attempt must still trigger the wipe.
       await expectLater(
-          AppLock(storage).unlock('1111'),
+          AppLock(storage, kdfMemory: 256, kdfIterations: 1).unlock('1111'),
           throwsA(isA<DataWipedException>()));
       expect(storage.wiped, isTrue);
     });
 
     test('the panic button wipes immediately', () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       await lock.enable(password: '123456789012', passwordLength: 12);
 
       await lock.wipe();
@@ -117,7 +117,7 @@ void main() {
     });
 
     test('rejects a password whose length does not match the choice', () async {
-      final lock = AppLock(_MemStorage());
+      final lock = AppLock(_MemStorage(), kdfMemory: 256, kdfIterations: 1);
       await expectLater(
         lock.enable(password: '123', passwordLength: 4),
         throwsA(isA<ArgumentError>()),
@@ -130,7 +130,7 @@ void main() {
 
     test('disable removes the lock', () async {
       final storage = _MemStorage();
-      final lock = AppLock(storage);
+      final lock = AppLock(storage, kdfMemory: 256, kdfIterations: 1);
       await lock.enable(password: '1234', passwordLength: 4);
       await lock.disable();
       expect(await lock.isEnabled(), isFalse);

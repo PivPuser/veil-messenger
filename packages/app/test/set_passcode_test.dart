@@ -18,7 +18,7 @@ void main() {
   testWidgets('sets a 4-digit passcode (enter + confirm) and enables the lock',
       (WidgetTester tester) async {
     // Fast KDF + in-memory storage keeps the widget test snappy and settle-able.
-    final AppLock lock = AppLock(MemoryLockStorage(), kdfIterations: 1);
+    final AppLock lock = AppLock(MemoryLockStorage(), kdfMemory: 256, kdfIterations: 1);
 
     await tester.pumpWidget(MaterialApp(
       home: Builder(
@@ -54,7 +54,7 @@ void main() {
 
   testWidgets('mismatched confirmation shows an error and does not enable',
       (WidgetTester tester) async {
-    final AppLock lock = AppLock(MemoryLockStorage(), kdfIterations: 1);
+    final AppLock lock = AppLock(MemoryLockStorage(), kdfMemory: 256, kdfIterations: 1);
 
     await tester.pumpWidget(MaterialApp(home: SetPasscodeScreen(appLock: lock)));
     await tester.pumpAndSettle();

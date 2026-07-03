@@ -147,6 +147,30 @@ class Primitives {
     return Uint8List.fromList(await key.extractBytes());
   }
 
+  /// Argon2id — a memory-hard password KDF. Strongly preferred over [pbkdf2]
+  /// for low-entropy secrets (PINs): the memory cost makes GPU/ASIC brute-force
+  /// far more expensive. [memory] is in KiB.
+  static Future<Uint8List> argon2id({
+    required List<int> password,
+    required List<int> salt,
+    int memory = 19456,
+    int iterations = 2,
+    int parallelism = 1,
+    int bits = 256,
+  }) async {
+    final Argon2id kdf = Argon2id(
+      memory: memory,
+      parallelism: parallelism,
+      iterations: iterations,
+      hashLength: bits ~/ 8,
+    );
+    final SecretKey key = await kdf.deriveKey(
+      secretKey: SecretKey(password),
+      nonce: salt,
+    );
+    return Uint8List.fromList(await key.extractBytes());
+  }
+
   /// HMAC-SHA256, used for the symmetric-key ratchet.
   static Future<Uint8List> hmacSha256(List<int> key, List<int> data) async {
     final Mac mac = await Hmac.sha256().calculateMac(

@@ -32,23 +32,31 @@ class DataWipedException implements Exception {
 
 /// A passphrase lock with a panic-wipe policy.
 ///
-/// Enabling derives a 32-byte master key from the user's password (PBKDF2, via
-/// [SecretVault]) and stores a small verifier so the password can be checked at
-/// unlock time. After [defaultMaxAttempts] consecutive wrong passwords, every
-/// bit of app data is wiped.
+/// Enabling derives a 32-byte master key from the user's password with Argon2id
+/// (memory-hard, via [SecretVault]) and stores a small verifier so the password
+/// can be checked at unlock time. After [defaultMaxAttempts] consecutive wrong
+/// passwords, every bit of app data is wiped.
 ///
 /// The attempt counter is persisted BEFORE each check, so force-quitting the
 /// app between attempts cannot reset it — the wipe policy can't be dodged.
 class AppLock {
-  AppLock(this._storage, {this.kdfIterations = 210000});
+  AppLock(
+    this._storage, {
+    this.kdfMemory = 19456,
+    this.kdfIterations = 2,
+    this.kdfParallelism = 1,
+  });
 
   final LockStorage _storage;
 
-  /// PBKDF2 iteration count used when enabling the lock. Stored in the lock
-  /// metadata so unlocking always uses the same value the key was derived with
-  /// (and so the cost can be raised in future versions without breaking old
-  /// vaults). Tests may lower it for speed.
+  /// Argon2id parameters used when enabling the lock. Stored in the lock
+  /// metadata so unlocking uses the same values (and the cost can be raised in
+  /// future versions without breaking existing vaults). Tests lower them.
+  final int kdfMemory; // KiB
   final int kdfIterations;
+  final int kdfParallelism;
+
+  static const int _kdfArgon2id = 1;
 
   static const String _metaKey = 'lock.meta';
 
@@ -83,10 +91,12 @@ class AppLock {
       throw ArgumentError('password must be exactly $passwordLength characters');
     }
     final Uint8List salt = SecretVault.newSalt();
-    final Uint8List key = await SecretVault.deriveKey(
+    final Uint8List key = await SecretVault.deriveKeyArgon2id(
       passphrase: password,
       salt: salt,
+      memory: kdfMemory,
       iterations: kdfIterations,
+      parallelism: kdfParallelism,
     );
     final Uint8List verifier = await SecretVault.seal(
       masterKey: key,
@@ -98,7 +108,10 @@ class AppLock {
       passwordLength: passwordLength,
       maxAttempts: maxAttempts,
       failedAttempts: 0,
-      iterations: kdfIterations,
+      kdfAlgorithm: _kdfArgon2id,
+      kdfMemory: kdfMemory,
+      kdfIterations: kdfIterations,
+      kdfParallelism: kdfParallelism,
     ));
     return key;
   }
@@ -120,10 +133,12 @@ class AppLock {
     meta.failedAttempts += 1;
     await _saveMeta(meta);
 
-    final Uint8List key = await SecretVault.deriveKey(
+    final Uint8List key = await SecretVault.deriveKeyArgon2id(
       passphrase: password,
       salt: meta.salt,
-      iterations: meta.iterations,
+      memory: meta.kdfMemory,
+      iterations: meta.kdfIterations,
+      parallelism: meta.kdfParallelism,
     );
     bool correct;
     try {
@@ -166,7 +181,10 @@ class _LockMeta {
     required this.passwordLength,
     required this.maxAttempts,
     required this.failedAttempts,
-    required this.iterations,
+    required this.kdfAlgorithm,
+    required this.kdfMemory,
+    required this.kdfIterations,
+    required this.kdfParallelism,
   });
 
   final Uint8List salt;
@@ -174,7 +192,10 @@ class _LockMeta {
   final int passwordLength;
   final int maxAttempts;
   int failedAttempts;
-  final int iterations;
+  final int kdfAlgorithm;
+  final int kdfMemory;
+  final int kdfIterations;
+  final int kdfParallelism;
 
   Uint8List serialize() {
     final ByteWriter w = ByteWriter()
@@ -183,7 +204,10 @@ class _LockMeta {
       ..u32(passwordLength)
       ..u32(maxAttempts)
       ..u32(failedAttempts)
-      ..u32(iterations);
+      ..byte(kdfAlgorithm)
+      ..u32(kdfMemory)
+      ..u32(kdfIterations)
+      ..u32(kdfParallelism);
     return w.toBytes();
   }
 
@@ -195,7 +219,10 @@ class _LockMeta {
       passwordLength: r.u32(),
       maxAttempts: r.u32(),
       failedAttempts: r.u32(),
-      iterations: r.u32(),
+      kdfAlgorithm: r.byte(),
+      kdfMemory: r.u32(),
+      kdfIterations: r.u32(),
+      kdfParallelism: r.u32(),
     );
   }
 }

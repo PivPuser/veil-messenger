@@ -15,7 +15,7 @@ Future<void> _enter(WidgetTester tester, String pin) async {
 }
 
 Future<AppLock> _enabledLock() async {
-  final AppLock lock = AppLock(MemoryLockStorage(), kdfIterations: 1);
+  final AppLock lock = AppLock(MemoryLockStorage(), kdfMemory: 256, kdfIterations: 1);
   await lock.enable(password: '1234', passwordLength: 4);
   return lock;
 }
