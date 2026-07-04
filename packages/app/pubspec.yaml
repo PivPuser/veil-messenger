@@ -45,6 +45,12 @@ dependencies:
   path_provider: ^2.1.4
   qr_flutter: ^4.1.0
 
+# path_provider_android 2.3.x pulls in jni/jni_flutter, whose Android module
+# fails to build on the current bleeding-edge AGP. Pin to the 2.2.x line, which
+# uses plain platform channels.
+dependency_overrides:
+  path_provider_android: ">=2.2.0 <2.3.0"
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
