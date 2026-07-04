@@ -2,6 +2,8 @@
 .dart_tool/
 .packages
 build/
+.kotlin/
+.gradle/
 # Packages regenerate this via `dart pub get`; not committed in this repo.
 pubspec.lock
 .flutter-plugins
